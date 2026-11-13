@@ -1619,7 +1619,7 @@ setPersistence(auth, browserLocalPersistence).catch(()=>{});
 
 const financeTools = [{ functionDeclarations: [
   { name:"consultar_finanzas", description:"Consulta los datos cargados en un módulo financiero. Siempre es de solo lectura.", parameters:Schema.object({
-    properties:{modulo:Schema.string({enum:["billetera","prestamos","tarjetas","haberes","historial"]}),periodo:Schema.string({description:"Período solicitado en lenguaje natural; por ejemplo este mes, octubre o últimos movimientos."}),filtro:Schema.string({description:"Cuenta, persona, tarjeta, categoría o concepto opcional."})}, optionalProperties:["periodo","filtro"]
+    properties:{modulo:Schema.string({enum:["general","billetera","prestamos","tarjetas","compras_tarjeta","transferencias","deudas","haberes","historial","configuracion","estadisticas"]}),periodo:Schema.string({description:"Período solicitado en lenguaje natural; por ejemplo este mes, octubre o últimos movimientos."}),filtro:Schema.string({description:"Cuenta, persona, tarjeta, categoría o concepto opcional."})}, optionalProperties:["periodo","filtro"]
   })},
   { name:"preparar_operacion", description:"Prepara una operación compatible en NicSys y la deja pendiente de confirmación explícita. Nunca guarda ni modifica datos.", parameters:Schema.object({
     properties:{tipo:Schema.string({enum:["gasto","ingreso","pago_tarjeta","compra_tarjeta"]}),monto:Schema.number({description:"Importe positivo expresado por el usuario."}),descripcion:Schema.string({description:"Concepto exacto, comercio o detalle expresado por el usuario."}),fecha:Schema.string({description:"Fecha YYYY-MM-DD; usar la fecha actual si el usuario no dijo otra."}),medio:Schema.string({enum:["efectivo","digital","debito","transferencia","credito"]}),cuenta:Schema.string({description:"Nombre exacto de la cuenta si fue expresado."}),categoria:Schema.string({description:"Categoría existente si fue expresada o reconocible con certeza."}),tarjeta:Schema.string({description:"Nombre exacto de tarjeta si fue expresado."}),cuotas:Schema.integer({description:"Cuotas indicadas por el usuario; solo 1, 2, 3, 6, 9 o 12."})}, optionalProperties:["descripcion","fecha","medio","cuenta","categoria","tarjeta","cuotas"]
@@ -1628,11 +1628,14 @@ const financeTools = [{ functionDeclarations: [
 const financeAI=getAI(fbApp,{backend:new GoogleAIBackend()});
 const financeModel=getGenerativeModel(financeAI,{model:"gemini-3.8-flash",tools:financeTools,systemInstruction:"Sos NicSys IA, asistente financiero de esta aplicación, en español argentino y con respuestas breves. Solo usá datos entregados por las herramientas; nunca inventes saldos, personas, fechas ni resultados. Para una consulta financiera invocá consultar_finanzas con el módulo pertinente. Para registrar algo, invocá preparar_operacion solo si hay intención clara y los datos principales están dichos. Nunca afirmes que registraste, corregiste o eliminaste algo: la herramienta únicamente prepara una vista previa y el usuario debe confirmarla en la aplicación. No prepares préstamos, cobros, transferencias entre cuentas, cambios, eliminaciones ni configuraciones; pedí usar el flujo existente o aclarar."});
 let financeChat=financeModel.startChat(), financeTurns=0;
+const financeWithTimeout=(promise,ms=30000)=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>{financeChat=financeModel.startChat();financeTurns=0;reject(new Error("La consulta con IA tardó demasiado. Probá de nuevo o escribí el comando."));},ms);promise.then(v=>{clearTimeout(timer);resolve(v);},e=>{clearTimeout(timer);financeChat=financeModel.startChat();financeTurns=0;reject(e);});});
 window.__nicsysGemini={
-  async ask(text){
+  async ask(text){ return this.askInput(text); },
+  async askAudio(mimeType,data){ return this.askInput([{inlineData:{mimeType,data}},{text:"Interpretá el audio como una consulta o comando del usuario de NicSys Finance. Conservá sus palabras y contexto, no inventes datos. Para consultar usá la herramienta de solo lectura; para una operación prepará únicamente una propuesta que requiera confirmación explícita."}]); },
+  async askInput(input){
     if(financeTurns>=12){ financeChat=financeModel.startChat(); financeTurns=0; }
     financeTurns++;
-    let result=await financeChat.sendMessage(text);
+    let result=await financeWithTimeout(financeChat.sendMessage(input));
     let handled=false, prepared=false;
     for(let pass=0;pass<2;pass++){
       const calls=result.response.functionCalls(); if(!calls.length) return {handled,text:result.response.text()||"No pude formular una respuesta con los datos disponibles."};
@@ -1644,7 +1647,7 @@ window.__nicsysGemini={
         if(value&&value.ok){ handled=true; if(value.prepared) prepared=true; }
         responses.push({type:"functionResponse",functionResponse:{name:call.name,response:value}});
       }
-      result=await financeChat.sendMessage(responses);
+      result=await financeWithTimeout(financeChat.sendMessage(responses));
     }
     return {handled,prepared,text:result.response.text()||"La consulta quedó limitada por seguridad. Probá con una pregunta más concreta."};
   },
@@ -1704,7 +1707,7 @@ async function importarDatosJSON(jsonText){
 
 // Puente hacia el resto de la app (que corre en un <script> clasico, no modulo,
 // para que todos los onclick="..." del HTML sigan funcionando como siempre).
-window.fbOnAuthStateChanged = (cb) => onAuthStateChanged(auth, cb);
+window.fbOnAuthStateChanged = (cb) => onAuthStateChanged(auth, user => { window.__nicsysUid=user&&user.uid||''; if(user&&window.vzCargarPreferencias) window.vzCargarPreferencias(user.uid); cb(user); });
 window.fbSignIn = (email, pass) => signInWithEmailAndPassword(auth, email, pass);
 window.fbSignOut = () => signOut(auth);
 window.fbColRef = colRefShim;
@@ -3930,12 +3933,26 @@ function openMasterPanel(editIndex=null){
       <div class="master-stats"><div class="master-stat">Valor hora<b>${money(rate)}</b></div><div class="master-stat">Sueldo base<b>${money(base)}</b></div></div>
       <div class="master-edit-grid"><button class="btn" type="button" onclick="openRateForm()">Editar valor hora</button><button class="btn" type="button" onclick="openBaseForm()">Editar sueldo base</button></div>
     </section>
+    <section class="master-card master-labor-card" id="vzMasterVoice">
+      <div class="master-card-head"><div class="master-card-name"><b>NicSys AI — Configuración de voz</b><small>Preferencias aplicadas al asistente y Cámara IA</small></div></div>
+      <div class="master-edit-grid">
+        <label>Preferencia de voz<select id="vzMasterGender" onchange="vzMaestroSet('gender',this.value)"><option value="any">Automática</option><option value="f">Femenina (si el motor la identifica)</option><option value="m">Masculina (si el motor la identifica)</option></select></label>
+        <label>Acento<select id="vzMasterAccent" onchange="vzMaestroSet('accent',this.value)"><option value="es-AR">Argentino</option><option value="es-MX">Español de México</option><option value="es-419">Español neutro</option></select></label>
+        <label>Estilo<select id="vzMasterStyle" onchange="vzMaestroSet('style',this.value)"><option value="natural">Natural</option><option value="very">Muy natural</option><option value="conversational">Conversacional humanizada</option></select></label>
+        <label>Velocidad<select id="vzMasterSpeed" onchange="vzMaestroSet('speed',this.value)"><option value="slow">Lenta</option><option value="normal">Normal</option><option value="fast">Rápida</option></select></label>
+        <label>Volumen <span id="vzMasterVolV"></span><input id="vzMasterVolume" type="range" min="0" max="1" step="0.05" value="1" oninput="vzMaestroSet('volume',this.value)"></label>
+      </div>
+      <p class="hint" id="vzMasterVoiceNote">La voz y su naturalidad dependen del motor instalado en el dispositivo. El navegador no siempre informa género; en ese caso se usará la voz disponible más cercana.</p>
+      <div class="modal-actions"><button class="btn" type="button" onclick="vzProbarVoz()">Probar voz</button><button class="btn primary" type="button" onclick="vzGuardarPreferencias()">Guardar preferencias</button></div>
+      <div class="vz-note" id="vzMasterVoiceStatus" aria-live="polite"></div>
+    </section>
     ${typeof seccionSaldosMaestro==='function'?seccionSaldosMaestro():''}
     ${seccionTercerosMaestro()}
     ${items||'<div class="empty">Todavía no hay tarjetas.</div>'}
     <button class="btn primary" style="width:100%;margin-top:8px" type="button" onclick="openTarjetaForm()">＋ Agregar tarjeta</button>
     <div class="modal-actions"><button class="btn" onclick="closeModal()">Cerrar</button></div>
   </div></div>`;
+  vzMaestroPintar();
 }
 async function guardarTarjetaMaestra(index){
   const t=tarjetas[index];
@@ -6027,6 +6044,19 @@ window.__nicsysAIRegistry={
   enabled:true,
   consultar_finanzas:async({modulo,periodo,filtro})=>{
     const per=vzPeriodoQ(periodo||'este mes')||vzPeriodoQ('este mes'), f=norm(filtro||'');
+    if(modulo==='general'||modulo==='estadisticas'||modulo==='configuracion'){
+      const w=W(), st=w.state||{}, s=vzSaldos(), ag=w.wlAgg(per.a,per.b), h=calcularHaberes(), tjs=(tarjetas||[]).map(t=>{const r=resumenTarjeta(t);return {nombre:t.name,banco:t.bank,limite:Number(t.limite)||0,disponible:Number(t.libre)||0,aPagar:r.aPagar,vencimiento:t.vence||'',cierre:t.cierre||''};}), ter=(dtLista()||[]).map(x=>({persona:x.nombre,pendiente:(Number(x.pendienteC)||0)/100})), loans=vzPrestamosOtorgadosPendientes().map(x=>({persona:x.persona,saldo:Number(x.item.saldoC)||0,fecha:x.item.fecha}));
+      return {ok:true,modulo,periodo:per.l,actualizadoDesde:'estado actual cargado por NicSys',billetera:{saldos:s,cuentas:(st.cuentas||[]).map(c=>({nombre:c.nombre,tipo:c.tipo,saldo:w.wlSaldo(c.id)}))},actividad:{ingresos:ag.ing,gastos:ag.gas,rendimientos:ag.rend,balance:Math.round((ag.ing-ag.gas)*100)/100},tarjetas:tjs,prestamosOtorgados:loans,prestamosRecibidos:(prestamosRecibi||[]).filter(x=>!x.pagado).map(x=>({detalle:x.obs||'Préstamo recibido',pendiente:Number(x.monto)||0})),deudasTerceros:ter,haberes:{neto:h.neto,aPagarTarjetas:h.aPagarProximoVenc,saldoFuturo:h.saldoFuturoTotal},datos:{cuentas:(st.cuentas||[]).length,categorias:(st.cats||[]).length,movimientosBilletera:(st.movs||[]).length,movimientosTarjeta:(movimientos||[]).length}};
+    }
+    if(modulo==='deudas'){
+      return {ok:true,modulo,porCobrar:(dtLista()||[]).filter(x=>x.pendienteC>0&&(!f||norm(x.nombre).includes(f))).map(x=>({persona:x.nombre,pendiente:(Number(x.pendienteC)||0)/100})),prestamosOtorgados:vzPrestamosOtorgadosPendientes().filter(x=>!f||norm(x.persona).includes(f)).map(x=>({persona:x.persona,saldo:Number(x.item.saldoC)||0})),prestamosRecibidos:(prestamosRecibi||[]).filter(x=>!x.pagado&&(!f||norm(x.obs||'').includes(f))).map(x=>({detalle:x.obs||'Préstamo recibido',pendiente:Number(x.monto)||0}))};
+    }
+    if(modulo==='compras_tarjeta'){
+      const compras=(movimientos||[]).slice().sort((a,b)=>dtISOf(b.fecha).localeCompare(dtISOf(a.fecha))).filter(m=>(!f||norm((m.tarjeta||'')+' '+(m.tipo||'')).includes(f))&&(!periodo||!/^\d{4}-\d{2}-\d{2}$/.test(String(m.fecha))||String(m.fecha)>=per.a&&String(m.fecha)<=per.b)).slice(0,30).map(m=>({tipo:m.tipo,tarjeta:m.tarjeta,monto:Number(m.monto)||0,cuotas:m.cuotas||1,fecha:dtISOf(m.fecha)})); return {ok:true,modulo,periodo:per.l,compras};
+    }
+    if(modulo==='transferencias'){
+      const ms=(W().state.movs||[]).filter(m=>/transfer|traspas|retiro|deposito/i.test(String(m.tipo||'')+' '+String(m.desc||''))&&(!f||norm(m.desc||'').includes(f))).slice(-30).reverse().map(m=>({tipo:m.tipo,descripcion:m.desc||'',monto:Number(m.monto)||0,fecha:m.fechaISO,cuentaId:m.cuentaId,cuentaDestinoId:m.cuentaDestinoId||''})); return {ok:true,modulo,movimientos:ms};
+    }
     if(modulo==='billetera'){
       const Wl=W(), a=Wl.wlAgg(per.a,per.b), s=vzSaldos(), cuentas=(Wl.state.cuentas||[]).map(c=>({nombre:c.nombre,tipo:c.tipo,saldo:Wl.wlSaldo(c.id)})).filter(c=>!f||norm(c.nombre).includes(f));
       return {ok:true,modulo,periodo:per.l,ingresos:a.ing,gastos:a.gas,rendimientos:a.rend,balance:Math.round((a.ing-a.gas)*100)/100,saldos:{total:s.t,digital:s.d,efectivo:s.f},cuentas:cuentas.slice(0,20)};
@@ -6382,17 +6412,17 @@ function cmIniciar(){ if(document.getElementById('cmFab')) return; cmHtml(); con
 
 /* ---------- síntesis de voz V20: todas las voces del dispositivo, prosodia natural, 100% local y gratuita ---------- */
 const TTS=()=>typeof speechSynthesis!=='undefined'&&speechSynthesis&&typeof speechSynthesis.speak==='function'&&typeof SpeechSynthesisUtterance!=='undefined';
-let vzVoz={lista:[],todas:[],sel:null,uri:'',lang:'',rate:1,pitch:1,ultimo:'',ultimoT:0,timer:null,wd:null,reintentos:0,seq:0,hablando:false,expresiva:true,verTodas:false,gen:'todas'};
-try{ vzVoz.uri=localStorage.getItem('vz_voz')||''; vzVoz.lang=localStorage.getItem('vz_lang')||''; vzVoz.expresiva=localStorage.getItem('vz_expr')!=='0'; vzVoz.verTodas=localStorage.getItem('vz_todas')==='1'; const r=parseFloat(localStorage.getItem('vz_rate')), p=parseFloat(localStorage.getItem('vz_pitch')); if(r>=.6&&r<=1.6) vzVoz.rate=r; if(p>=.6&&p<=1.6) vzVoz.pitch=p; vz.conv=localStorage.getItem('vz_conv')==='1'; }catch(e){}
+let vzVoz={lista:[],todas:[],sel:null,uri:'',lang:'es-AR',rate:1,pitch:1,volume:1,gender:'any',style:'natural',ultimo:'',ultimoT:0,timer:null,wd:null,reintentos:0,seq:0,hablando:false,expresiva:true,verTodas:false,gen:'todas'};
+try{ vzVoz.uri=localStorage.getItem('vz_voz')||''; vzVoz.lang=localStorage.getItem('vz_lang')||'es-AR'; vzVoz.expresiva=localStorage.getItem('vz_expr')!=='0'; vzVoz.verTodas=localStorage.getItem('vz_todas')==='1'; vzVoz.volume=Math.min(1,Math.max(0,Number(localStorage.getItem('vz_volume')??1))); const r=parseFloat(localStorage.getItem('vz_rate')), p=parseFloat(localStorage.getItem('vz_pitch')); if(r>=.6&&r<=1.6) vzVoz.rate=r; if(p>=.6&&p<=1.6) vzVoz.pitch=p; vz.conv=localStorage.getItem('vz_conv')==='1'; }catch(e){}
 const VZ_GF=/\b(female|woman|mujer|femenin[ao]|sabina|paulina|monica|helena|laura|lucia|marisol|elena|carmen|maria|camila|valentina|isabela|dalia|elvira|ximena|paloma|esperanza|salome|abril|lupe|catalina|renata|andrea|sofia|luciana|florencia|julieta|agustina|natalia|silvia|ines|rosa|ana|marta|mia)\b/i;
 const VZ_GM=/\b(male|man|hombre|masculin[ao]|diego|jorge|juan|carlos|pablo|raul|miguel|enrique|alvaro|andres|antonio|tomas|mateo|emilio|gonzalo|jaime|alonso|ricardo|pedro|luis|jose|manuel|sergio|martin|lorenzo|nicolas)\b/i;
-function vzGenero(v){ const n=norm(v.name||''); if(VZ_GF.test(n)) return 'f'; if(VZ_GM.test(n)) return 'm'; return ''; }
+function vzGenero(v){ const g=String(v&&v.gender||'').toLowerCase(); return ['female','f','femenina'].includes(g)?'f':['male','m','masculina'].includes(g)?'m':''; }
 function vzPuntaje(v){ const l=String(v.lang||'').replace('_','-').toLowerCase(); let p=l==='es-ar'?100:l==='es-419'?92:l==='es-us'?88:l==='es-mx'?82:/^es/.test(l)?60:20;
   if(/google|natural|neural|premium|enhanced|wavenet|online/i.test(v.name||'')) p+=12; if(v.localService===false) p+=3; if(/compact|espeak|robot|festival/i.test(v.name||'')) p-=25; return p; }
 function vzCargarVoces(){ if(!TTS()) return; let vs=[]; try{ vs=speechSynthesis.getVoices()||[]; }catch(e){}
   vzVoz.todas=vs.slice().sort((a,b)=>vzPuntaje(b)-vzPuntaje(a)||String(a.name).localeCompare(String(b.name)));
   vzVoz.lista=vzVoz.todas.filter(v=>/^es([-_]|$)/i.test(v.lang||''));
-  vzVoz.sel=(vzVoz.uri&&vzVoz.todas.find(v=>v.voiceURI===vzVoz.uri))||vzVoz.lista[0]||null;
+  const generadas=vzVoz.gender==='any'?[]:vzVoz.lista.filter(v=>vzGenero(v)===vzVoz.gender); vzVoz.sel=(vzVoz.uri&&vzVoz.todas.find(v=>v.voiceURI===vzVoz.uri))||(generadas[0])||vzVoz.lista[0]||null;
   if(!vs.length&&vzVoz.reintentos<6){ vzVoz.reintentos++; setTimeout(vzCargarVoces,600*vzVoz.reintentos); }
   vzPintarAjustes(); }
 /* números a palabras: «$41.000,50» → «cuarenta y un mil pesos con cincuenta centavos» */
@@ -6419,10 +6449,11 @@ function vzParaVoz(t){ let x=String(t||'').replace(/<[^>]+>/g,' ').replace(/&nbs
 function vzPartes(t){ return vzArmarPartes(t).map(p=>p.t); }
 function vzArmarPartes(txt){ const sents=(txt.match(/[^.!?]+[.!?]*/g)||[txt]).map(s=>s.trim()).filter(Boolean), out=[];
   if(!vzVoz.expresiva){ let cur=''; sents.forEach(f=>{ if((cur+' '+f).trim().length<150) cur=(cur+' '+f).trim(); else { if(cur) out.push({t:cur,pausa:0,rd:0,pd:0}); cur=f; } }); if(cur) out.push({t:cur,pausa:0,rd:0,pd:0}); return out; }
+  const human=vzVoz.style==='conversational'?1.25:vzVoz.style==='very'?1.1:1;
   sents.forEach(s=>{ const fin=s.slice(-1), q=/\?/.test(s)||fin==='?', ex=fin==='!';
     let trozos=[s]; if(s.length>110){ trozos=[]; let c=''; s.split(/(?<=[,;:])\s+/).forEach(w=>{ if((c+' '+w).trim().length>100&&c){ trozos.push(c); c=w; } else c=(c+' '+w).trim(); }); if(c) trozos.push(c); }
     trozos.forEach((c,i)=>{ const ultimo=i===trozos.length-1, coma=/[,;:]$/.test(c);
-      out.push({t:c,pausa:ultimo?(q?300:ex?230:fin==='.'?270:160):(coma?130:90),rd:(q?-.02:ex?.04:0)+(Math.random()-.5)*.03,pd:(q&&ultimo?.09:ex?.05:0)+(Math.random()-.5)*.03}); }); });
+      out.push({t:c,pausa:Math.round((ultimo?(q?300:ex?230:fin==='.'?270:160):(coma?130:90))*human),rd:(q?-.02:ex?.04:0)+(Math.random()-.5)*.03*human,pd:(q&&ultimo?.09:ex?.05:0)+(Math.random()-.5)*.03*human}); }); });
   return out; }
 function vzDetenerHabla(){ vzVoz.seq++; clearTimeout(vzVoz.timer); clearTimeout(vzVoz.wd); try{ if(TTS()) speechSynthesis.cancel(); }catch(e){} vzVoz.hablando=false; }
 function vzHablar(t,forzar){ if(!TTS()||(!vz.hablar&&!forzar)) return; const txt=vzParaVoz(t); if(!txt) return;
@@ -6433,7 +6464,7 @@ function vzDecirParte(partes,i,id){ if(id!==vzVoz.seq) return;
   if(i>=partes.length){ vzVoz.hablando=false; try{ vzPintar(); }catch(e){} return vzFinHabla(); }
   const p=partes[i]; let hecho=false; const rate=Math.min(1.6,Math.max(.6,vzVoz.rate*(1+p.rd))), pitch=Math.min(2,Math.max(.5,vzVoz.pitch+p.pd));
   const sig=()=>{ if(hecho||id!==vzVoz.seq) return; hecho=true; clearTimeout(vzVoz.wd); setTimeout(()=>vzDecirParte(partes,i+1,id),p.pausa); };
-  try{ const u=new SpeechSynthesisUtterance(p.t); u.lang=(vzVoz.sel&&vzVoz.sel.lang)||vzVoz.lang||'es-AR'; try{ if(vzVoz.sel) u.voice=vzVoz.sel; }catch(e){} u.rate=rate; u.pitch=pitch; u.volume=1; u.onend=sig; u.onerror=sig; speechSynthesis.speak(u);
+  try{ const u=new SpeechSynthesisUtterance(p.t); u.lang=(vzVoz.sel&&vzVoz.sel.lang)||vzVoz.lang||'es-AR'; try{ if(vzVoz.sel) u.voice=vzVoz.sel; }catch(e){} u.rate=rate; u.pitch=pitch; u.volume=Math.max(0,Math.min(1,Number(vzVoz.volume)||0)); u.onend=sig; u.onerror=sig; speechSynthesis.speak(u);
     clearTimeout(vzVoz.wd); vzVoz.wd=setTimeout(sig,Math.max(3000,p.t.length*110/rate+2000)); }catch(e){ sig(); } }
 function vzFinHabla(){ if(!vz.conv||!SR) return; const sh=document.getElementById('vzSheet'); if(!sh||sh.hidden||vz.escuchando||vz.busy||(vz.silencios||0)>=2) return; vzEscuchar(); }
 function vzProbarVoz(){ vzHablar('Hola, ¿cómo andás? Soy NicSys IA. Así suena mi voz. Si querés, probá otra.',true); }
@@ -6448,8 +6479,12 @@ function vzPintarAjustes(){ const sel=document.getElementById('vzVozSel'); if(!s
   const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.checked=!!v; }; set('vzTodas',vzVoz.verTodas); set('vzExpr',vzVoz.expresiva); set('vzConv',vz.conv);
   const lg=document.getElementById('vzLang'); if(lg) lg.value=vzVoz.lang;
   document.querySelectorAll('#vzGen button').forEach(b=>b.classList.toggle('primary',b.dataset.g===vzVoz.gen));
-  const n=document.getElementById('vzCfgNota'); if(n) n.textContent=!vzVoz.todas.length?'Este navegador no muestra voces. Elegí un acento abajo (usa la voz predeterminada de Android) o instalá voces en Ajustes > Idioma > Salida de texto a voz.':(!vzVoz.lista.length?'No hay voces en español: activá «otros idiomas» o instalá voces en Android (Ajustes > Salida de texto a voz).':`${L.length} voces disponibles (el género se estima por el nombre). La calidad depende de las voces instaladas en tu Android; no se usa ningún servicio pago.`); }
-function vzGuardarAjustes(){ try{ localStorage.setItem('vz_voz',vzVoz.uri); localStorage.setItem('vz_lang',vzVoz.lang); localStorage.setItem('vz_rate',String(vzVoz.rate)); localStorage.setItem('vz_pitch',String(vzVoz.pitch)); localStorage.setItem('vz_expr',vzVoz.expresiva?'1':'0'); localStorage.setItem('vz_todas',vzVoz.verTodas?'1':'0'); localStorage.setItem('vz_conv',vz.conv?'1':'0'); }catch(e){} }
+  const n=document.getElementById('vzCfgNota'); if(n) n.textContent=!vzVoz.todas.length?'Este navegador no muestra voces. Elegí un acento abajo (usa la voz predeterminada del dispositivo) o instalá voces en sus ajustes.':(!vzVoz.lista.length?'No hay voces en español: activá «otros idiomas» o instalá voces en el dispositivo.':`${L.length} voces disponibles. ${vzVoz.gender!=='any'&&!vzVoz.lista.some(v=>vzGenero(v)===vzVoz.gender)?'El motor no declara el género de ninguna voz; se usa la voz disponible más cercana. ':''}La calidad y naturalidad dependen de las voces instaladas; no se usa un servicio de síntesis externo.`); }
+function vzGuardarAjustes(){ try{ localStorage.setItem('vz_voz',vzVoz.uri); localStorage.setItem('vz_lang',vzVoz.lang); localStorage.setItem('vz_rate',String(vzVoz.rate)); localStorage.setItem('vz_pitch',String(vzVoz.pitch)); localStorage.setItem('vz_volume',String(vzVoz.volume)); localStorage.setItem('vz_expr',vzVoz.expresiva?'1':'0'); localStorage.setItem('vz_todas',vzVoz.verTodas?'1':'0'); localStorage.setItem('vz_conv',vz.conv?'1':'0'); }catch(e){} }
+function vzMaestroSet(k,v){ if(k==='accent') vzVoz.lang=v; if(k==='gender') vzVoz.gender=v; if(k==='style'){ vzVoz.style=v; vzVoz.expresiva=v!=='natural'; } if(k==='speed') vzVoz.rate=v==='slow'?.82:v==='fast'?1.18:1; if(k==='volume') vzVoz.volume=Math.max(0,Math.min(1,Number(v)||0)); vzGuardarAjustes(); vzMaestroPintar(); }
+function vzMaestroPintar(){ const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=v;}; set('vzMasterGender',vzVoz.gender||'any'); set('vzMasterAccent',vzVoz.lang||'es-AR'); set('vzMasterStyle',vzVoz.style||'natural'); set('vzMasterSpeed',vzVoz.rate<.9?'slow':vzVoz.rate>1.08?'fast':'normal'); set('vzMasterVolume',vzVoz.volume??1); const n=document.getElementById('vzMasterVoiceNote'); if(n)n.textContent=`Motor: síntesis de voz integrada en el dispositivo. Acento ${vzVoz.lang==='es-MX'?'mexicano':vzVoz.lang==='es-419'?'neutro':'argentino'}, velocidad ${vzVoz.rate<.9?'lenta':vzVoz.rate>1.08?'rápida':'normal'}. El motor del navegador no ofrece un control estándar de naturalidad ni metadatos confiables de género; la preferencia de género se aplica solo si el motor la informa.`; const v=document.getElementById('vzMasterVolV'); if(v)v.textContent=`${Math.round((vzVoz.volume??1)*100)}%`; }
+async function vzGuardarPreferencias(){ const status=document.getElementById('vzMasterVoiceStatus'); try{ const uid=window.__nicsysUid; if(!uid) throw new Error('Iniciá sesión para guardar las preferencias de voz.'); await db.doc('ai_voice_preferences/'+uid).set({lang:vzVoz.lang,rate:vzVoz.rate,volume:vzVoz.volume,gender:vzVoz.gender,style:vzVoz.style,expresiva:vzVoz.expresiva,voiceURI:vzVoz.uri,actualizadoISO:new Date().toISOString()}); if(status)status.textContent='Preferencias guardadas para esta cuenta.'; }catch(e){ if(status)status.textContent='No se pudieron guardar: '+(e.message||'error de conexión'); } }
+async function vzCargarPreferencias(uid){ try{ const snap=await db.doc('ai_voice_preferences/'+uid).get(); if(!snap.exists){ vzVoz.lang='es-AR';vzVoz.rate=1;vzVoz.volume=1;vzVoz.gender='any';vzVoz.style='natural';vzVoz.expresiva=true;vzVoz.uri=''; vzGuardarAjustes(); vzMaestroPintar(); return; } const p=snap.data()||{}; if(['es-AR','es-MX','es-419'].includes(p.lang))vzVoz.lang=p.lang; if(Number.isFinite(Number(p.rate)))vzVoz.rate=Math.min(1.4,Math.max(.7,Number(p.rate))); if(Number.isFinite(Number(p.volume)))vzVoz.volume=Math.min(1,Math.max(0,Number(p.volume))); if(['any','f','m'].includes(p.gender))vzVoz.gender=p.gender; if(['natural','very','conversational'].includes(p.style))vzVoz.style=p.style; vzVoz.expresiva=p.expresiva!==false; if(p.voiceURI)vzVoz.uri=p.voiceURI; vzGuardarAjustes(); vzCargarVoces(); vzMaestroPintar(); }catch(e){console.warn('Preferencias de voz',e);} }
 
 /* ---------- comandos personalizados: frase → significado (módulo + acción), guardados en Firestore ---------- */
 const VZ_ACC={
@@ -6529,6 +6564,23 @@ function vzPintarCmds(){ const el=document.getElementById('vzCmdList'); if(!el) 
   el.innerHTML=`<button type="button" class="btn primary" onclick="vozEnsAbrir({})">Enseñar un comando nuevo</button>`+L+A; }
 
 /* ---------- reconocimiento ---------- */
+let vzMediaRec=null,vzMediaStream=null,vzAudioChunks=[],vzAudioTimer=null;
+async function vzProcesarAudio(blob,mime){
+  const i=document.getElementById('vzMic'); vz.busy=true; vzUsuario('🎙️ Mensaje de voz'); vzLive('Procesando audio con NicSys IA…'); vzPintar();
+  try{ const data=await new Promise((resolve,reject)=>{ const fr=new FileReader(); fr.onload=()=>resolve(String(fr.result).split(',')[1]||''); fr.onerror=()=>reject(new Error('No pude leer la grabación.')); fr.readAsDataURL(blob); });
+    const r=await window.__nicsysGemini.askAudio(String(mime||'audio/webm').split(';')[0],data); vz.busy=false; vzLive('');
+    if(r&&r.prepared){ vzPintar(); return; }
+    if(r&&r.text) vzDecir(esc(r.text),r.text); else vzDecir('No pude entender el audio. Probá de nuevo o escribí el comando.');
+  }catch(e){ console.warn('Audio IA',e); vz.busy=false; vzLive(''); vzDecir(esc(e.message||'No pude procesar el audio.')); }
+  finally{ if(vzMediaStream){ vzMediaStream.getTracks().forEach(t=>t.stop()); vzMediaStream=null; } if(i) i.setAttribute('aria-pressed','false'); }
+}
+async function vzGrabarAudio(){
+  if(vzMediaRec&&vzMediaRec.state==='recording'){ vzMediaRec.stop(); return; }
+  if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==='undefined'){ vzEscuchar(); return; }
+  try{ vzMediaStream=await navigator.mediaDevices.getUserMedia({audio:true}); const opts={}; if(MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) opts.mimeType='audio/webm;codecs=opus'; else if(MediaRecorder.isTypeSupported('audio/mp4')) opts.mimeType='audio/mp4';
+    vzAudioChunks=[]; vzMediaRec=new MediaRecorder(vzMediaStream,opts); vzMediaRec.ondataavailable=e=>{if(e.data&&e.data.size) vzAudioChunks.push(e.data);}; vzMediaRec.onstop=()=>{ clearTimeout(vzAudioTimer); const b=new Blob(vzAudioChunks,{type:vzMediaRec.mimeType||'audio/webm'}); if(b.size>14*1024*1024){ vzDecir('La grabación es demasiado larga. Probá con un comando más breve.'); vzMediaStream?.getTracks().forEach(t=>t.stop()); vzMediaStream=null; return; } vzProcesarAudio(b,b.type); }; vzMediaRec.start(); document.getElementById('vzMic')?.setAttribute('aria-pressed','true'); vzLive('Grabando… Tocá el micrófono para enviar.'); vzAudioTimer=setTimeout(()=>{if(vzMediaRec?.state==='recording')vzMediaRec.stop();},20000);
+  }catch(e){ console.warn('Micrófono',e); vzMediaStream?.getTracks().forEach(t=>t.stop()); vzMediaStream=null; vzDecir('No pude acceder al micrófono. Revisá el permiso del sitio o escribí el comando.'); }
+}
 function vzEscuchar(){
   if(!SR){ vzDecir('Este navegador no permite reconocimiento de voz. Escribí el comando abajo o usá el micrófono de tu teclado.','Este navegador no permite reconocimiento de voz.'); const i=document.getElementById('vzTxt'); if(i) i.focus(); return; }
   if(vz.escuchando){ try{ vz.rec.stop(); }catch(e){} return; }
@@ -6612,7 +6664,7 @@ function vzHtml(){ const el=document.createElement('div'); el.innerHTML=`<button
      <label>Acción<select id="vzCmAcc" onchange="vozEnAcc('vzCm')">${vzOpcionesAcc(Object.keys(VZ_ACC)[0],0)}</select></label>
      <label>Significa<input id="vzCmSig" maxlength="200" autocomplete="off" value="${esc(VZ_ACC[Object.keys(VZ_ACC)[0]][0][1])}"></label>
      <button id="vzCmAdd" type="button" class="btn primary">Guardar comando</button><div id="vzCmNota" class="vz-note"></div></div></details></div>
-  <div class="vz-body" id="vzScroll"><p class="vz-privacy">Las consultas con Gemini envían el texto y los datos necesarios de tus módulos a Google para generar la respuesta. Las operaciones solo se preparan; confirmalas en NicSys.</p><div id="vzLog" class="vz-log" aria-live="polite"></div><div id="vzCard"></div></div>
+  <div class="vz-body" id="vzScroll"><p class="vz-privacy">Las consultas con Gemini envían el texto y los datos necesarios de tus módulos a Google para generar la respuesta. Si grabás un mensaje de voz, el audio también se envía a Google. Las operaciones solo se preparan; confirmalas en NicSys.</p><div id="vzLog" class="vz-log" aria-live="polite"></div><div id="vzCard"></div></div>
   <div class="vz-foot"><div id="vzLive" class="vz-live" aria-live="polite"></div>
    <div class="vz-hints"><button type="button" data-h="Gasté 5 lucas en el súper">Gasté en el súper</button><button type="button" data-h="¿Qué tarjeta me conviene para comprar $10.000 hoy?">¿Qué tarjeta me conviene?</button><button type="button" data-h="Hoy hice 1 hora y 20 minutos de adicional">Horas adicionales</button><button type="button" data-h="¿Cuánto llevo acumulado de sueldo?">¿Cuánto llevo de sueldo?</button><button type="button" data-h="¿Cuándo vencen mis tarjetas?">¿Cuándo vencen?</button><button type="button" data-h="Me entró plata">Me entró plata</button><button type="button" data-h="Pasé plata al banco">Pasé plata al banco</button><button type="button" data-h="¿Cuánta plata tengo?">¿Cuánta plata tengo?</button></div>
    <div class="vz-in"><button id="vzMic" type="button" class="vz-mic" aria-label="Hablar" aria-pressed="false">${vzIconoOscuro('mic',30)}<i></i></button><div class="vz-field"><span id="vzEstado" class="vz-estado"></span><div class="vz-row"><input id="vzTxt" type="text" inputmode="text" autocomplete="off" placeholder="O escribí el comando…" aria-label="Escribir comando"><button id="vzSend" type="button" class="btn primary">Enviar</button></div></div></div></div>
@@ -6636,7 +6688,7 @@ function vzHtml(){ const el=document.createElement('div'); el.innerHTML=`<button
   while(el.firstChild) document.body.appendChild(el.firstChild); }
 function vozIniciar(){ if(document.getElementById('vzFab')||!window.__wl) return; vzHtml(); cmIniciar();
   const fab=document.getElementById('vzFab'); fab.addEventListener('click',vzAbrir);
-  document.getElementById('vzClose').addEventListener('click',vzCerrar); document.getElementById('vzMic').addEventListener('click',()=>{ vz.silencios=0; vzEscuchar(); });
+  document.getElementById('vzClose').addEventListener('click',vzCerrar); document.getElementById('vzMic').addEventListener('click',()=>{ vz.silencios=0; if(!SR) vzGrabarAudio(); else vzEscuchar(); });
   document.getElementById('vzSend').addEventListener('click',vzEnviarTxt); document.getElementById('vzTxt').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); vzEnviarTxt(); } });
   document.getElementById('vzSpk').addEventListener('click',()=>{ vz.hablar=!vz.hablar; try{ localStorage.setItem('vz_hablar',vz.hablar?'1':'0'); }catch(e){} if(!vz.hablar) vzDetenerHabla(); vzPintar(); });
   document.getElementById('vzCfg').addEventListener('click',()=>{ const b=document.getElementById('vzCfgBox'); b.hidden=!b.hidden; document.getElementById('vzCfg').setAttribute('aria-expanded',!b.hidden); vzCargarVoces(); });
@@ -6658,6 +6710,7 @@ function vozIniciar(){ if(document.getElementById('vzFab')||!window.__wl) return
 if(TTS()){ try{ if(speechSynthesis.addEventListener) speechSynthesis.addEventListener('voiceschanged',vzCargarVoces); else speechSynthesis.onvoiceschanged=vzCargarVoces; }catch(e){} vzCargarVoces(); }
 Object.assign(window,{vozFormTj:vzFormTj,cmAbrir,vozIniciar,vozUltimoDel:vzUltimoDelOk,vozUltimoMonto:vzUltimoMontoOk,vozUltimoCobro:id=>{ if(typeof dtBorrarPago==='function') dtBorrarPago(id); },vozEnMod:vzEnMod,vozEnsAbrir:vzEnsAbrir,vozCmdEdit:vzCmdEdit,vozAsocDel:vzAsocDel,vozEnAcc:vzEnAcc,vozEnGuardar:vzEnGuardar,vozEnNo:vzEnNo,vozCmdDel:vzCmdDel,vozConfirmar:vzConfirmar,vozCancelar:()=>vzCancelar(false),vozCorregir:vzCorregir,vozResp:vzResp,
   __vz:{vzModulo,vzDuracion,vzCuotas,vzTarjetasEn,vzPeriodoQ,vzMonto,vzAnalizar,vzFecha,vzProcesar,vzConfirmar,vzResp,get estado(){return vz;},get voz(){return vzVoz;},vzEntidad,vzCategoria,vzMedio,vzIntencion,norm,vzN,vzCargarVoces,vzHablar,vzParaVoz,vzPartes,vzPuntaje,vzAncla,vzAsegurar,vzProbarVoz,numLetras,vzDinero,vzDetenerHabla,vzBuscarCmd,vzExpandir,vzAgregarCmd,vzArmarPartes,vzGenero,cmParseTexto,cmParseQR,cmCompletar,vzRegistrarOp,cm:()=>cm,vzFormaPago,vzAsocBuscar,vzHistCat,vzCuentasDig,vzEnsAbrir,vzEnsGuardar,vzEnsProbar,get vzAsoc(){return vzAsoc;},cmDetectarDoc,cmEnderezar,cmNitidez,cmMejorar,cmNueva,cmAbrir,cmCerrar,cmRegistrar,cmForm,cmValidar,cmFusionar,cmMontos,vzSin,vzV21,vzDespachar,get cmds(){return vzCmds;}}});
+window.vzCargarPreferencias=vzCargarPreferencias; window.vzMaestroSet=vzMaestroSet; window.vzGuardarPreferencias=vzGuardarPreferencias; window.vzProbarVoz=vzProbarVoz;
 })();
 
 </script>
