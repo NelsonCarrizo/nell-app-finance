@@ -18,6 +18,7 @@ Fecha: 13 de noviembre de 2026
 - Los 9 bloques JavaScript inline pasan `node --check`.
 - Comprobaciones estáticas confirmaron cobertura de módulos, uso del estado cargado, flujo de audio, límites de grabación, preparación de operaciones sin escrituras, preferencias locales por usuario, y manejo explícito de errores.
 - El sitio público sirve la versión desplegada y la sesión autenticada de la app abre.
+- En la versión pública comprobé que aparece «IA» en la barra principal, que abre el asistente, que el GIF animado se carga y que el campo de texto y los ejemplos están disponibles.
 - Firebase Hosting se desplegó únicamente en `nell-app-finance`; no se desplegaron reglas, índices ni datos.
 - No se crearon ni modificaron movimientos financieros de prueba.
 - Se envió una consulta inocua de conectividad («Respondé únicamente: conexión de prueba»). Firebase AI Monitoring registró una solicitud con latencia p95 de 4,26 minutos; la consola del navegador informó primero error 500 por alta demanda y luego vencimiento del límite de 30 segundos. La app no produjo una respuesta Gemini en esa prueba.
