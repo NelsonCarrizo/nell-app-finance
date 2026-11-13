@@ -1584,6 +1584,7 @@ table{display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:to
   <button id="dockF" onclick="setTab('finanzas')" aria-label="Finanzas"><span class="dock-ic"><svg viewBox="0 0 24 24"><path d="M5 4.5h14a2 2 0 0 1 2 2v13H3v-13a2 2 0 0 1 2-2Z"/><path d="M7 9h10M7 13h4m-4 3h7"/></svg></span><span>Finanzas</span></button>
   <button id="dockB" onclick="setTab('billetera')" aria-label="Billetera"><span class="dock-ic"><svg viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18v3M4 7.5V17a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H6.5A2.5 2.5 0 0 1 4 7.5Z"/><circle cx="16" cy="13.5" r="1"/></svg></span><span>Billetera</span></button>
   <button id="dockM" onclick="openMasterPanel()" aria-label="Panel Maestro"><span class="dock-ic"><svg viewBox="0 0 24 24"><circle cx="11" cy="13" r="7.5"/><circle cx="11" cy="13" r="3.4"/><path d="m14.5 9.5 6-6m-4.5 0h4.5V8"/></svg></span><span>Maestro</span></button>
+  <button id="dockAI" type="button" onclick="abrirNicSysIA()" aria-label="Abrir NicSys IA"><span class="dock-ic dock-ai-ic"><img src="/icons/nicsys-ia.png" alt="" width="26" height="26"></span><span>IA</span></button>
 </nav>
 
 <script type="module">
@@ -6630,12 +6631,13 @@ function vzPintar(){ const log=document.getElementById('vzLog'); if(!log) return
   log.innerHTML=vz.log.slice(-14).map(m=>`<div class="vz-m ${m.w}">${m.h}</div>`).join('');
   const card=document.getElementById('vzCard'); card.innerHTML=vz.ensenar&&!vz.op?vzTarjetaEnsenar():vz.op&&vz.confirm?vzTarjetaOp(vz.op):vz.op&&vz.ask?vzTarjetaAsk():'';
   const mic=document.getElementById('vzMic'); mic.classList.toggle('on',vz.escuchando); mic.setAttribute('aria-pressed',vz.escuchando);
-  document.getElementById('vzEstado').textContent=vz.escuchando?'Escuchando… hablá ahora':vz.busy?'Guardando…':'Tocá el micrófono y hablá';
+  document.getElementById('vzEstado').textContent=vz.escuchando?'Escuchando… hablá ahora':vz.busy?'Procesando tu pedido…':vzVoz.hablando?'Respondiendo en voz alta…':'Tocá el micrófono y hablá';
+  const avatar=document.getElementById('vzAvatar'),avatarText=document.getElementById('vzAvatarText'),recording=typeof vzMediaRec!=='undefined'&&vzMediaRec&&vzMediaRec.state==='recording'; if(avatar){ const state=vz.escuchando||recording?'listening':vz.busy?'thinking':vzVoz.hablando?'speaking':'idle'; avatar.dataset.state=state; if(avatarText)avatarText.textContent=state==='listening'?'Te escucho…':state==='thinking'?'Estoy preparando la respuesta…':state==='speaking'?'Te estoy respondiendo…':'Preguntame o dame una orden. Ej.: «¿cuánta plata tengo?» o «gasté 5 lucas en el súper».'; }
   document.getElementById('vzSheet').classList.toggle('listen',vz.escuchando);
   const sp=document.getElementById('vzSpk'); sp.classList.toggle('off',!vz.hablar); sp.setAttribute('aria-label',vz.hablar?'Silenciar respuestas habladas':'Activar respuestas habladas');
   log.scrollTop=log.scrollHeight; const sh=document.getElementById('vzScroll'); if(sh) sh.scrollTop=sh.scrollHeight; }
-function vzAbrir(){ const s=document.getElementById('vzSheet'); s.hidden=false; { const cf=document.getElementById('cmFab'); if(cf) cf.hidden=true; } document.body.classList.add('vz-open'); if(!vz.log.length) vz.log.push({w:'n',h:'Hola, soy <b>NicSys IA</b>. Contame como hablás: «gasté 5 lucas en el súper», «me entró plata», «pasé plata al banco»… Siempre te pido confirmación antes de guardar.'}); vzCargarVoces(); vzPintar(); }
-function vzCerrar(){ try{ if(vz.rec&&vz.escuchando) vz.rec.abort(); vzDetenerHabla(); }catch(e){} vz.conv=false; try{ localStorage.setItem('vz_conv','0'); }catch(e){} vz.escuchando=false; document.getElementById('vzSheet').hidden=true; document.body.classList.remove('vz-open'); { const cf=document.getElementById('cmFab'),vf=document.getElementById('vzFab'); if(cf&&vf) cf.hidden=vf.hidden; } }
+function vzAbrir(){ const s=document.getElementById('vzSheet'); s.hidden=false; const aiImg=document.getElementById('vzAvatarImg'); if(aiImg&&!aiImg.src)aiImg.src=aiImg.dataset.src; const dock=document.getElementById('dock'),dockAI=document.getElementById('dockAI'); if(dock)dock.classList.add('ai'); if(dockAI)dockAI.classList.add('on'); { const cf=document.getElementById('cmFab'); if(cf) cf.hidden=true; } document.body.classList.add('vz-open'); if(!vz.log.length) vz.log.push({w:'n',h:'Hola, soy <b>NicSys IA</b>. Contame como hablás: «gasté 5 lucas en el súper», «me entró plata», «pasé plata al banco»… Siempre te pido confirmación antes de guardar.'}); vzCargarVoces(); vzPintar(); }
+function vzCerrar(){ try{ if(vz.rec&&vz.escuchando) vz.rec.abort(); vzDetenerHabla(); }catch(e){} vz.conv=false; try{ localStorage.setItem('vz_conv','0'); }catch(e){} vz.escuchando=false; document.getElementById('vzSheet').hidden=true; document.body.classList.remove('vz-open'); const dock=document.getElementById('dock'),dockAI=document.getElementById('dockAI'); if(dock)dock.classList.remove('ai'); if(dockAI)dockAI.classList.remove('on'); { const cf=document.getElementById('cmFab'),vf=document.getElementById('vzFab'); if(cf&&vf) cf.hidden=vf.hidden; } }
 function vzResp(v){ if(vz.op&&['credito','debito','transferencia'].includes(v)&&vz.ask!=='cuotas'){ const L={credito:'Tarjeta de crédito',debito:'Débito',transferencia:'Transferencia'}; vz.log.push({w:'u',h:L[v]}); if(v==='debito'&&vz.ask==='tarjeta'&&vz.op.deGasto) vzVolverGasto(vz.op,'debito'); else if(!vzAplicarForma(vz.op,v,vzN(vz.op.transcripcion||''))) return vzDecir('Para este movimiento no corresponde esa forma de pago.','Para este movimiento no corresponde esa forma de pago.'); return vzAvanzar(); }
   if(/^c:/.test(String(v))&&vz.op&&vz.ask==='cuenta'){ const cu=W().state.cuentas.find(x=>x.id===String(v).slice(2)); if(cu){ vz.log.push({w:'u',h:esc(cu.nombre)}); vz.op.cuentaId=cu.id; return vzAvanzar(); } }
   if(vz.ask==='cuotas'&&/^\d+$/.test(String(v))){ vz.log.push({w:'u',h:esc(v+(v==='1'?' cuota':' cuotas'))}); vz.op.cuotas=Number(v); return vzAvanzar(); }
@@ -6665,10 +6667,10 @@ function vzHtml(){ const el=document.createElement('div'); el.innerHTML=`<button
      <label>Acción<select id="vzCmAcc" onchange="vozEnAcc('vzCm')">${vzOpcionesAcc(Object.keys(VZ_ACC)[0],0)}</select></label>
      <label>Significa<input id="vzCmSig" maxlength="200" autocomplete="off" value="${esc(VZ_ACC[Object.keys(VZ_ACC)[0]][0][1])}"></label>
      <button id="vzCmAdd" type="button" class="btn primary">Guardar comando</button><div id="vzCmNota" class="vz-note"></div></div></details></div>
-  <div class="vz-body" id="vzScroll"><p class="vz-privacy">Las consultas con Gemini envían el texto y los datos necesarios de tus módulos a Google para generar la respuesta. Si grabás un mensaje de voz, el audio también se envía a Google. Las operaciones solo se preparan; confirmalas en NicSys.</p><div id="vzLog" class="vz-log" aria-live="polite"></div><div id="vzCard"></div></div>
+  <div class="vz-body" id="vzScroll"><div class="vz-avatar-row"><div class="vz-avatar" id="vzAvatar" data-state="idle"><img id="vzAvatarImg" data-src="/icons/ai-voice-assistant.gif" alt="Asistente de voz animado" width="256" height="192" decoding="async"></div><span id="vzAvatarText" aria-live="polite">Hablame o escribime lo que necesitás.</span></div><p class="vz-privacy">Las consultas con Gemini envían el texto y los datos necesarios de tus módulos a Google para generar la respuesta. Si grabás un mensaje de voz, el audio también se envía a Google. Las operaciones solo se preparan; confirmalas en NicSys.</p><div id="vzLog" class="vz-log" aria-live="polite"></div><div id="vzCard"></div></div>
   <div class="vz-foot"><div id="vzLive" class="vz-live" aria-live="polite"></div>
    <div class="vz-hints"><button type="button" data-h="Gasté 5 lucas en el súper">Gasté en el súper</button><button type="button" data-h="¿Qué tarjeta me conviene para comprar $10.000 hoy?">¿Qué tarjeta me conviene?</button><button type="button" data-h="Hoy hice 1 hora y 20 minutos de adicional">Horas adicionales</button><button type="button" data-h="¿Cuánto llevo acumulado de sueldo?">¿Cuánto llevo de sueldo?</button><button type="button" data-h="¿Cuándo vencen mis tarjetas?">¿Cuándo vencen?</button><button type="button" data-h="Me entró plata">Me entró plata</button><button type="button" data-h="Pasé plata al banco">Pasé plata al banco</button><button type="button" data-h="¿Cuánta plata tengo?">¿Cuánta plata tengo?</button></div>
-   <div class="vz-in"><button id="vzMic" type="button" class="vz-mic" aria-label="Hablar" aria-pressed="false">${vzIconoOscuro('mic',30)}<i></i></button><div class="vz-field"><span id="vzEstado" class="vz-estado"></span><div class="vz-row"><input id="vzTxt" type="text" inputmode="text" autocomplete="off" placeholder="O escribí el comando…" aria-label="Escribir comando"><button id="vzSend" type="button" class="btn primary">Enviar</button></div></div></div></div>
+  <div class="vz-in"><button id="vzMic" type="button" class="vz-mic" aria-label="Hablar: tocá para dar una orden por voz" aria-pressed="false">${vzIconoOscuro('mic',30)}<i></i></button><div class="vz-field"><span id="vzEstado" class="vz-estado"></span><div class="vz-row"><input id="vzTxt" type="text" inputmode="text" autocomplete="off" placeholder="Preguntá o escribí una orden…" aria-label="Escribir pregunta u orden para NicSys IA"><button id="vzSend" type="button" class="btn primary">Enviar</button></div></div></div></div>
   <div id="vzTeach" class="vz-teach" hidden role="dialog" aria-label="Enseñar a NicSys IA"><div class="vz-bar"><div class="vz-brand"><b>Enseñar a NicSys IA</b></div><div class="vz-barb"><button id="vzTeX" type="button" class="vz-ib" aria-label="Cerrar">×</button></div></div>
    <div class="vz-te-body">
     <label>Frase o comando que voy a usar<input id="vzTeFrase" maxlength="80" autocomplete="off" placeholder="ej: cargué nafta"></label>
@@ -6709,7 +6711,7 @@ function vozIniciar(){ if(document.getElementById('vzFab')||!window.__wl) return
   const ver=()=>{ const app=document.getElementById('app'); const vis=app&&app.style.display==='block'; fab.hidden=!vis||!document.getElementById('vzSheet').hidden; const cf=document.getElementById('cmFab'); if(cf) cf.hidden=!vis||!document.getElementById('vzSheet').hidden||!document.getElementById('cmSheet').hidden; if(!vis&&!document.getElementById('vzSheet').hidden) vzCerrar(); };
   ver(); setInterval(ver,800); }
 if(TTS()){ try{ if(speechSynthesis.addEventListener) speechSynthesis.addEventListener('voiceschanged',vzCargarVoces); else speechSynthesis.onvoiceschanged=vzCargarVoces; }catch(e){} vzCargarVoces(); }
-Object.assign(window,{vozFormTj:vzFormTj,cmAbrir,vozIniciar,vozUltimoDel:vzUltimoDelOk,vozUltimoMonto:vzUltimoMontoOk,vozUltimoCobro:id=>{ if(typeof dtBorrarPago==='function') dtBorrarPago(id); },vozEnMod:vzEnMod,vozEnsAbrir:vzEnsAbrir,vozCmdEdit:vzCmdEdit,vozAsocDel:vzAsocDel,vozEnAcc:vzEnAcc,vozEnGuardar:vzEnGuardar,vozEnNo:vzEnNo,vozCmdDel:vzCmdDel,vozConfirmar:vzConfirmar,vozCancelar:()=>vzCancelar(false),vozCorregir:vzCorregir,vozResp:vzResp,
+Object.assign(window,{vozFormTj:vzFormTj,cmAbrir,vozIniciar,abrirNicSysIA:vzAbrir,vozUltimoDel:vzUltimoDelOk,vozUltimoMonto:vzUltimoMontoOk,vozUltimoCobro:id=>{ if(typeof dtBorrarPago==='function') dtBorrarPago(id); },vozEnMod:vzEnMod,vozEnsAbrir:vzEnsAbrir,vozCmdEdit:vzCmdEdit,vozAsocDel:vzAsocDel,vozEnAcc:vzEnAcc,vozEnGuardar:vzEnGuardar,vozEnNo:vzEnNo,vozCmdDel:vzCmdDel,vozConfirmar:vzConfirmar,vozCancelar:()=>vzCancelar(false),vozCorregir:vzCorregir,vozResp:vzResp,
   __vz:{vzModulo,vzDuracion,vzCuotas,vzTarjetasEn,vzPeriodoQ,vzMonto,vzAnalizar,vzFecha,vzProcesar,vzConfirmar,vzResp,get estado(){return vz;},get voz(){return vzVoz;},vzEntidad,vzCategoria,vzMedio,vzIntencion,norm,vzN,vzCargarVoces,vzHablar,vzParaVoz,vzPartes,vzPuntaje,vzAncla,vzAsegurar,vzProbarVoz,numLetras,vzDinero,vzDetenerHabla,vzBuscarCmd,vzExpandir,vzAgregarCmd,vzArmarPartes,vzGenero,cmParseTexto,cmParseQR,cmCompletar,vzRegistrarOp,cm:()=>cm,vzFormaPago,vzAsocBuscar,vzHistCat,vzCuentasDig,vzEnsAbrir,vzEnsGuardar,vzEnsProbar,get vzAsoc(){return vzAsoc;},cmDetectarDoc,cmEnderezar,cmNitidez,cmMejorar,cmNueva,cmAbrir,cmCerrar,cmRegistrar,cmForm,cmValidar,cmFusionar,cmMontos,vzSin,vzV21,vzDespachar,get cmds(){return vzCmds;}}});
 window.vzCargarPreferencias=vzCargarPreferencias; window.vzMaestroSet=vzMaestroSet; window.vzGuardarPreferencias=vzGuardarPreferencias; window.vzProbarVoz=vzProbarVoz;
 })();
@@ -6843,5 +6845,30 @@ async function nsGuardarItem(col,id){ const E=NS_ED[col], it=E.L().find(x=>x.id=
  window.addEventListener('wl-cat-migrada',()=>{ try{ if(window.render&&typeof activeTab!=='undefined'&&activeTab==='billetera') render(); }catch(e){} });
 })();
 </script>
+<style id="nicsys-ai-access-css">
+/* Acceso de IA visible en la barra principal y su indicador de estado */
+#dock .dock-ind{width:calc(16.6667% - 2.5px)}
+#dock.dock.i .dock-ind{transform:translateX(0)}
+#dock.dock.f .dock-ind{transform:translateX(calc(100% + 2.5px))}
+#dock.dock.h .dock-ind{transform:translateX(calc(200% + 5px))}
+#dock.dock.b .dock-ind{transform:translateX(calc(300% + 7.5px))}
+#dock.dock.m .dock-ind{transform:translateX(calc(400% + 10px))}
+#dock.dock.ai .dock-ind{transform:translateX(calc(500% + 12.5px));background:linear-gradient(145deg,#8afbdc,#37F4B5);border-color:rgba(230,254,255,.55);box-shadow:0 5px 18px rgba(55,244,181,.32),inset 0 1px 0 rgba(255,255,255,.56)}
+#dock .dock-ai-ic img{width:25px;height:25px;border-radius:50%;object-fit:cover;display:block}
+#dock #dockAI.on{color:#021F21}
+.vz-avatar-row{display:grid;justify-items:center;gap:7px;padding:3px 0 12px;text-align:center}
+.vz-avatar-row>span{font-size:13px;line-height:1.4;color:#bfeee1}
+.vz-avatar{position:relative;width:88px;height:88px;border-radius:50%;overflow:hidden;isolation:isolate;background:#030a25;border:1px solid rgba(55,244,181,.6);box-shadow:0 0 22px rgba(55,244,181,.15)}
+.vz-avatar:before{content:"";position:absolute;z-index:2;inset:-5px;border:2px solid rgba(55,244,181,.7);border-radius:50%;pointer-events:none;opacity:0}
+.vz-avatar img{position:absolute;z-index:1;max-width:none!important;width:256px;height:192px;left:calc(50% - 125px);top:calc(50% - 80px);object-fit:fill;border:0;border-radius:0;pointer-events:none;user-select:none}
+.vz-avatar[data-state="listening"],.vz-avatar[data-state="thinking"]{box-shadow:0 0 22px rgba(55,244,181,.45)}
+.vz-avatar[data-state="listening"]:before{opacity:1;animation:vz-ring 1.15s ease-out infinite}
+.vz-avatar[data-state="thinking"]:before{opacity:1;animation:vz-ring 1.6s ease-out infinite}
+.vz-avatar[data-state="speaking"]{box-shadow:0 0 28px rgba(55,244,181,.6),0 0 44px rgba(56,189,248,.25)}
+.vz-avatar[data-state="speaking"]:before{opacity:1;animation:vz-speaking .75s ease-in-out infinite alternate}
+@keyframes vz-ring{0%{transform:scale(.9);opacity:.85}100%{transform:scale(1.3);opacity:0}}
+@keyframes vz-speaking{from{transform:scale(.98);border-color:rgba(55,244,181,.45)}to{transform:scale(1.07);border-color:rgba(56,189,248,.95)}}
+@media(prefers-reduced-motion:reduce){.vz-avatar:before{animation:none!important}.vz-avatar[data-state="listening"]:before,.vz-avatar[data-state="thinking"]:before{opacity:.7}}
+</style>
 </body>
 </html>
