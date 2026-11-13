@@ -9,6 +9,7 @@ Fecha: 13 de noviembre de 2026
 - Las llamadas de Gemini tienen un máximo de espera de 30 segundos y reinician el chat si vence el tiempo o falla la conexión. Si Gemini falla, la interfaz lo informa y ofrece interpretar el comando localmente.
 - Micrófono: usa reconocimiento de voz del navegador cuando existe y MediaRecorder con audio enviado al mismo chat Gemini como alternativa. Límite de 20 segundos y 14 MiB; el aviso informa que el audio se envía a Google.
 - Panel Maestro ofrece acento, estilo, velocidad, volumen, prueba y preferencias guardadas localmente en este dispositivo, separadas por UID. No se añadió una colección nueva en Firestore ni hacen falta cambios de reglas.
+- NicSys IA tiene una entrada rotulada «IA» en la barra principal, además del botón flotante existente. El asistente muestra el GIF proporcionado con un aro de estado para escucha, procesamiento y respuesta; las instrucciones y ejemplos indican cómo preguntar o dar órdenes.
 - No se infiere género por el nombre de la voz. La preferencia solo se aplica si el motor del navegador informa el género.
 - No se añadió un proveedor externo de pago para síntesis de voz. La síntesis usa el navegador/dispositivo; la recepción de audio usa Firebase AI Logic ya integrado.
 
