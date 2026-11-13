@@ -1638,7 +1638,7 @@ window.__nicsysGemini={
     let result=await financeWithTimeout(financeChat.sendMessage(input));
     let handled=false, prepared=false;
     for(let pass=0;pass<2;pass++){
-      const calls=result.response.functionCalls(); if(!calls.length) return {handled,text:result.response.text()||"No pude formular una respuesta con los datos disponibles."};
+      const calls=result.response.functionCalls(); if(!calls.length) return {handled,responded:true,text:result.response.text()||"No pude formular una respuesta con los datos disponibles."};
       const responses=[];
       for(const call of calls){
         let value={ok:false,error:"Herramienta no disponible."};
@@ -5836,7 +5836,7 @@ function vzProcesar(texto){ const t0=String(texto||'').trim(); if(!t0||vz.busy) 
   if(!(vz.op&&(vz.confirm||vz.ask))&&window.__nicsysGemini&&window.__nicsysAIRegistry&&window.__nicsysAIRegistry.enabled!==false&&!vz.ensenar){
     const n0=vzN(t0); if(!/^(?:te ensen|ensename|quiero ensenar)/.test(n0)){
       vzUsuario(t0); vz.busy=true; vzPintar();
-      window.__nicsysGemini.ask(t0).then(r=>{ vz.busy=false; if(r&&r.handled){ if(r.prepared) vzPintar(); else vzDecir(esc(r.text||'Listo.'),r.text||'Listo.'); return; } vzDespachar(t0,true); }).catch(e=>{ console.warn('Gemini IA',e); vz.busy=false; vzDespachar(t0,true); }); return;
+      window.__nicsysGemini.ask(t0).then(r=>{ vz.busy=false; if(r&&(r.handled||r.responded)){ if(r.prepared) vzPintar(); else vzDecir(esc(r.text||'No pude responder.'),r.text||'No pude responder.'); return; } vzDespachar(t0,true); }).catch(e=>{ console.warn('Gemini IA',e); vz.busy=false; vzDespachar(t0,true); }); return;
     }
   }
   if(/\b(te ensen[oa]|ensenarte|ensename|ensenale|quiero ensenar|voy a ensenar)\b/.test(vzN(t0))&&!(vz.op&&(vz.confirm||vz.ask))){ vzUsuario(t0); vz.log.push({w:'n',h:'Dale, abrí el panel de enseñanza. Definí la frase, qué hace, la categoría y el medio de pago.'}); vzPintar(); vzEnsAbrir({}); if(vz.hablar) vzHablar('Dale, te abrí el panel de enseñanza.'); return; }
